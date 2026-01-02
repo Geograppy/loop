@@ -1,3 +1,6 @@
 osmnx
 networkx
 aiohttp
+matplotlib
+scikit-learn
+shapely
