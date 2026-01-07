@@ -5,12 +5,6 @@ import osmnx as ox
 import sys
 import unittest
 
-
-
-
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 from utils.playing_field_animation_plotter import PlayingFieldAnimationPlotter
 from utils.playing_field_plotter import PlayingFieldPlotter
 from models.strategy import CloseLoopStrategy

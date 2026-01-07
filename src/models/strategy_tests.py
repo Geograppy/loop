@@ -7,10 +7,6 @@ from unittest.mock import Mock, MagicMock, patch
 import osmnx as ox
 from shapely.geometry import LineString, Point
 
-
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
-
 from models.playing_field import PlayingField
 from models.location import Location
 from models.strategy import CloseLoopStrategy, NoopStrategy

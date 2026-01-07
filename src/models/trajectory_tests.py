@@ -7,9 +7,6 @@ from unittest.mock import Mock, MagicMock, patch
 import networkx as nx
 from shapely.geometry import LineString, Point
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
-
 from models.location import Location
 from models.trajectory import Trajectory
 

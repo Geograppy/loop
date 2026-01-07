@@ -3,8 +3,6 @@ import osmnx as ox
 import sys
 import unittest
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 from models.playing_field import PlayingField
 from models.player import Player  # Import here to avoid circular import issues
 from models.location import Location
