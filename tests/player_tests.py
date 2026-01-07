@@ -21,7 +21,7 @@ from models.player import Player
 class PlayerTests(unittest.TestCase):
     @property
     def _is_debugging(self) -> bool:
-        return True
+        return False
     
     def test_player_initialization(self):
         address = "Jeugdsquare 5, 3210 Linden"

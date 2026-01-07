@@ -4,6 +4,7 @@ import networkx as nx
 from shapely.geometry import Point, LineString
 from shapely.ops import substring
 
+from functions.graph_geometry_functions import GraphGeometryFunctions
 from models.location import Location
 from models.trajectory import Trajectory
 
@@ -33,8 +34,8 @@ class PlayingField:
         return G
     
     def add_player(self, player_id: str, start_location: Location) -> None:
-        start_location_proj: Point = ox.projection.project_geometry(Point(start_location.x, start_location.y), to_crs=self.graph.graph['crs'])[0]
-        snapped_point_proj, u, v, key = self._snap_to_edge(start_location_proj)
+
+        snapped_point_proj, u, v, key = GraphGeometryFunctions.snap_geo_point_to_proj_point_on_edge(Point(start_location.x, start_location.y), self.graph)
         snapped_point = ox.projection.project_geometry(snapped_point_proj, crs=self.graph.graph['crs'], to_latlong=True)[0]
 
         self._player_start_locations[player_id] = Location(snapped_point.y, snapped_point.x)
@@ -62,12 +63,11 @@ class PlayingField:
             return
         last_known_location = self._get_player_last_known_location(player_id)
         last_known_location_proj = ox.projection.project_geometry(Point(last_known_location.x, last_known_location.y), to_crs=self.graph.graph['crs'])[0]
-        last_known_location_proj, last_known_location_u, last_known_location_v, last_known_location_edge = self._snap_to_edge(last_known_location_proj)
+        last_known_location_proj, last_known_location_u, last_known_location_v, last_known_location_edge = GraphGeometryFunctions.snap_proj_point_to_proj_point_on_edge(last_known_location_proj, self.graph)
         
         # # 1. Snap new location to the nearest edge (Default u->v)
         new_location_proj = ox.projection.project_geometry(Point(new_location.x, new_location.y), to_crs=self.graph.graph['crs'])[0]
-        new_location_proj, new_location_u, new_location_v, new_location_edge = self._snap_to_edge(new_location_proj)
-
+        new_location_proj, new_location_u, new_location_v, new_location_edge = GraphGeometryFunctions.snap_proj_point_to_proj_point_on_edge(new_location_proj, self.graph)
         trajectory = self.get_player_trajectory(player_id)
         if (last_known_location_u, last_known_location_v) == (new_location_u, new_location_v):
             # Same edge, just update the trajectory
@@ -210,27 +210,4 @@ class PlayingField:
         return last_loc
 
 
-    def _snap_to_edge(self, point_proj: Point) -> tuple[Point, int, int, int]:
-        """
-        Finds the nearest edge and returns the geometry data.
-        Returns: (snapped_lat, snapped_lon, u, v, key)
-        """
-
-        # 2. Find nearest edge
-        u, v, key = ox.nearest_edges(self.graph, point_proj.x, point_proj.y)
-        
-        # 3. Get Edge Geometry
-        edge_data = self.graph.get_edge_data(u, v, key)
-        if 'geometry' in edge_data:
-            edge_geom: LineString = edge_data['geometry']
-        else:
-            # Construct straight line if no geometry exists
-            u_node = self.graph.nodes[u]
-            v_node = self.graph.nodes[v]
-            edge_geom = LineString([(u_node['x'], u_node['y']), (v_node['x'], v_node['y'])])
-
-        # 4. Snap point to this line
-        dist_along_edge = edge_geom.project(point_proj)
-        snapped_point_proj = edge_geom.interpolate(dist_along_edge)
-        
-        return snapped_point_proj, u, v, key
+    
