@@ -1,3 +1,4 @@
+from typing import Optional
 import osmnx as ox
 import networkx as nx
 from shapely.geometry import Point, LineString
@@ -18,6 +19,7 @@ class PlayingField:
         self.radius: int = radius
         self.graph: nx.MultiDiGraph = self._create_playing_field()
         self._player_start_locations: dict[str, Location] = {}
+        self._player_last_known_locations: dict[str, Location] = {}
         self._player_trajectories: dict[str, Trajectory] = {}
     
     @property
@@ -36,6 +38,7 @@ class PlayingField:
         snapped_point = ox.projection.project_geometry(snapped_point_proj, crs=self.graph.graph['crs'], to_latlong=True)[0]
 
         self._player_start_locations[player_id] = Location(snapped_point.y, snapped_point.x)
+        self._player_last_known_locations[player_id] = Location(snapped_point.y, snapped_point.x)
         self._player_trajectories[player_id] = Trajectory()
 
     
@@ -44,9 +47,15 @@ class PlayingField:
         if loc:
             return loc
         return None
+    
+    def get_player_last_known_location(self, player_id: str) -> Location | None:
+        loc = self._player_last_known_locations.get(player_id, None)
+        if loc:
+            return loc
+        return None
 
-    def get_player_trajectory(self, player_id: str) -> Trajectory:
-        return self._player_trajectories.get(player_id, Trajectory())
+    def get_player_trajectory(self, player_id: str) -> Optional[Trajectory]:
+        return self._player_trajectories.get(player_id, None)
 
     def update_current_location(self, player_id: str, new_location: Location):
         if player_id not in self._player_trajectories:
@@ -73,7 +82,13 @@ class PlayingField:
                 
                 start_dist = edge_geom.project(last_known_location_proj)
                 end_dist = edge_geom.project(new_location_proj)
-                coords.extend(edge_geom.coords[start_dist:end_dist])
+                line = substring(edge_geom, start_dist, end_dist)
+                if isinstance(line, LineString):
+                    coords.extend(line.coords)
+                else:
+                    pt = line
+                    coords.append((pt.x, pt.y))
+                
 
             coords.append((new_location_proj.x, new_location_proj.y))
             path_proj = LineString(coords)
@@ -96,27 +111,80 @@ class PlayingField:
                 # get geometry from last_known_location to next node
                 edge_data = self.graph.get_edge_data(path[path.index(node) - 1], node)
                 if 'geometry' in edge_data[0]:
-                    edge_geom = edge_data[0]['geometry']
+                    edge_geom: LineString = edge_data[0]['geometry']
+                    node_point = Point(self.graph.nodes[path[-1]]['x'], self.graph.nodes[path[-1]]['y'])
                     if node == path[1]:  # First edge
-                        start_point = Point(last_known_location_proj.x, last_known_location_proj.y)
+                        edge_geom = self._orient_edge_to_node(edge_geom, node_pt=node_point)
+                        start_point = last_known_location_proj
                         start_dist = edge_geom.project(start_point)
-                        coords.extend(edge_geom.coords[start_dist:])
+                        sub_line = substring(edge_geom, start_dist, edge_geom.length)
+                        if isinstance(sub_line, LineString):
+                            sub_coords = list(sub_line.coords)
+                            # avoid duplicating the start point already in coords
+                            if coords and sub_coords and coords[-1] == sub_coords[0]:
+                                coords.extend(sub_coords[1:])
+                            else:
+                                coords.extend(sub_coords)
+                        else:
+                            # substring may return a Point if start==end
+                            pt = sub_line
+                            pt_coord = (pt.x, pt.y)
+                            if not (coords and coords[-1] == pt_coord):
+                                coords.append(pt_coord)
+
                     elif node == path[-2]:  # Last edge
-                        end_point = Point(new_location_proj.x, new_location_proj.y)
+                        edge_geom = self._orient_edge_away_from_node(edge_geom, node_pt=node_point)
+                        end_point = new_location_proj
                         end_dist = edge_geom.project(end_point)
-                        coords.extend(edge_geom.coords[:end_dist])
+                        sub_line = substring(edge_geom, 0, end_dist)
+                        if isinstance(sub_line, LineString):
+                            sub_coords = list(sub_line.coords)
+                            # avoid duplicating the start point already in coords
+                            if coords and sub_coords and coords[-1] == sub_coords[0]:
+                                coords.extend(sub_coords[1:])
+                            else:
+                                coords.extend(sub_coords)
+                        else:
+                            # substring may return a Point if start==end
+                            pt = sub_line
+                            pt_coord = (pt.x, pt.y)
+                            if not (coords and coords[-1] == pt_coord):
+                                coords.append(pt_coord)
                     else:  # Middle edges
                         coords.extend(edge_geom.coords)
                 else:
                     node_data = self.graph.nodes[node]
                     coords.append((node_data['x'].item(), node_data['y'].item()))
-            coords.append((new_location_proj.x, new_location_proj.y))
+            if not (coords and coords[-1] == (new_location_proj.x, new_location_proj.y)):
+                coords.append((new_location_proj.x, new_location_proj.y))
             path_proj = LineString(coords)
             # convert path_proj back to lat/lon
             path_geo: LineString = ox.projection.project_geometry(path_proj, crs=self.graph.graph['crs'], to_latlong=True)[0]
             # update trajectory
             trajectory.update(path_geo)
-            
+        new_location_snapped = ox.projection.project_geometry(new_location_proj, crs=self.graph.graph['crs'], to_latlong=True)[0]
+        self._player_last_known_locations[player_id] = Location(new_location_snapped.y, new_location_snapped.x)
+
+    def _orient_edge_to_node(self, edge_geom: LineString, node_pt: Point, tol=1e-9) -> LineString:
+        # If node is already at the first coordinate, return as-is.
+        if Point(edge_geom.coords[0]).distance(node_pt) <= tol:
+            return edge_geom
+        # If node is at the last coordinate, reverse the coordinates so node becomes start.
+        if Point(edge_geom.coords[-1]).distance(node_pt) <= tol:
+            return LineString(list(edge_geom.coords)[::-1])
+        # Otherwise the node is not exactly on endpoints — you may want to snap first.
+        return edge_geom
+    
+    def _orient_edge_away_from_node(self, edge_geom: LineString, node_pt: Point, tol=1e-9) -> LineString:
+        # If node is already at the first coordinate, return as-is.
+        if Point(edge_geom.coords[0]).distance(node_pt) <= tol:
+            return LineString(list(edge_geom.coords)[::-1])
+        # If node is at the last coordinate, reverse the coordinates so node becomes start.
+        if Point(edge_geom.coords[-1]).distance(node_pt) <= tol:
+            return edge_geom
+        # Otherwise the node is not exactly on endpoints — you may want to snap first.
+        return edge_geom
+    
     def _get_farthest_node(self, u: int, v: int, point_proj: Point) -> int:
         """
         Given an edge (u, v) and a point, return the node (u or v) that is farthest from the point.

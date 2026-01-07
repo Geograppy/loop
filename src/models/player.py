@@ -22,6 +22,7 @@ class Player:
         self.max_moving_speed: float = max_moving_speed
         # strategy that decides the next move
         self._strategy: MovementStrategy = strategy or NoopStrategy()
+        field.add_player(self.id, current_location)
 
     @property
     def current_location(self) -> Location:

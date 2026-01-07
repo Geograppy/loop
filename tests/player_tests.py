@@ -21,7 +21,7 @@ from models.player import Player
 class PlayerTests(unittest.TestCase):
     @property
     def _is_debugging(self) -> bool:
-        return False
+        return True
     
     def test_player_initialization(self):
         address = "Jeugdsquare 5, 3210 Linden"
@@ -48,48 +48,53 @@ class PlayerTests(unittest.TestCase):
         self.assertEqual(player.current_location, new_location)
         self.assertIsNotNone(field.get_player_trajectory(player.id))
         
-    # def test_player_next_move(self):
-    #     timestamp1: datetime = datetime.now(timezone.utc) - timedelta(seconds=10)
-    #     timestamp2: datetime = datetime.now(timezone.utc) - timedelta(seconds=5)
-    #     address = "Jeugdsquare 1, 3210 Linden"
-    #     location1: Location = Location.from_address(address)
-    #     location1.timestamp = timestamp1
-    #     field = PlayingField(address, 1000)
-    #     player = Player("1", "TestPlayer", location1, field, strategy=CloseLoopStrategy(), max_moving_speed=4.0)
-    #     if self._is_debugging:
-    #         plotter = PlayingFieldAnimationPlotter(field)
-    #         plotter.visualize_state()
+    def test_player_next_move(self):
+        timestamp1: datetime = datetime.now(timezone.utc) - timedelta(seconds=10)
+        timestamp2: datetime = datetime.now(timezone.utc) - timedelta(seconds=5)
+        address = "Knapzak 2, 3210 Linden"
+        location1: Location = Location.from_address(address)
+        location1.timestamp = timestamp1
+        field = PlayingField(address, 1000)
+        player = Player("1", "TestPlayer", location1, field, strategy=CloseLoopStrategy(), max_moving_speed=10.0)
+        if self._is_debugging:
+            plotter = PlayingFieldAnimationPlotter(field)
+            plotter.visualize_state()
 
-    #     should_continue = player.move()
-    #     sleep(0.5)  # Simulate time passing
-    #     if self._is_debugging:
-    #         plotter.visualize_state()
-    #     if should_continue:
-    #         should_continue = player.move()
-    #         sleep(0.5)  # Simulate time passing
-    #         if self._is_debugging:
-    #             plotter.visualize_state()
-    #     if should_continue:
-    #         should_continue = player.move()
-    #         sleep(0.5)  # Simulate time passing
-    #         if self._is_debugging:
-    #             plotter.visualize_state()
-    #     if should_continue:
-    #         should_continue = player.move()
-    #         sleep(0.5)  # Simulate time passing
-    #         if self._is_debugging:
-    #             plotter.visualize_state()
-    #     if should_continue:
-    #         should_continue = player.move()
-    #         sleep(0.5)  # Simulate time passing
-    #         if self._is_debugging:
-    #             plotter.visualize_state()
-    #     if should_continue:
-    #         should_continue = player.move()
-    #         sleep(0.5)  # Simulate time passing
-    #         if self._is_debugging:
-    #             plotter.visualize_state()
+        should_continue = True
+        max_moves = 20
+        moves_made = 0
+        while should_continue and moves_made < max_moves:
+            sleep(0.5)  # Simulate time passing
+            moves_made += 1
+            should_continue = player.move()
+            if self._is_debugging:
+                plotter.visualize_state()
+        # if should_continue:
+        #     should_continue = player.move()
+        #     sleep(0.5)  # Simulate time passing
+        #     if self._is_debugging:
+        #         plotter.visualize_state()
+        # if should_continue:
+        #     should_continue = player.move()
+        #     sleep(0.5)  # Simulate time passing
+        #     if self._is_debugging:
+        #         plotter.visualize_state()
+        # if should_continue:
+        #     should_continue = player.move()
+        #     sleep(0.5)  # Simulate time passing
+        #     if self._is_debugging:
+        #         plotter.visualize_state()
+        # if should_continue:
+        #     should_continue = player.move()
+        #     sleep(0.5)  # Simulate time passing
+        #     if self._is_debugging:
+        #         plotter.visualize_state()
+        # if should_continue:
+        #     should_continue = player.move()
+        #     sleep(0.5)  # Simulate time passing
+        #     if self._is_debugging:
+        #         plotter.visualize_state()
             
-    #     self.assertIsNotNone(field.get_player_trajectory(player.id))
-    #     if self._is_debugging:
-    #         plotter.close()
+        self.assertIsNotNone(field.get_player_trajectory(player.id))
+        if self._is_debugging:
+            plotter.close()

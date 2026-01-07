@@ -15,7 +15,7 @@ from utils.playing_field_animation_plotter import PlayingFieldAnimationPlotter
 class PlayingFieldTests(unittest.TestCase):
     @property
     def _is_debugging(self) -> bool:
-        return True
+        return False
     
     def test_init_field(self):
         field = PlayingField("Jeugdsquare 5, 3210 Linden", 250)
@@ -38,6 +38,10 @@ class PlayingFieldTests(unittest.TestCase):
         
         self.assertTrue(trajectory.is_empty)
         
+        last_known_loc = field.get_player_last_known_location(player.id)
+        self.assertNotEqual(last_known_loc, player.current_location, 
+                            "The location should have been snapped to the nearest edge")
+        
         start_loc = field.get_player_start_location(player.id)
         # B. Check that the location was snapped (i.e., changed)
         self.assertNotEqual(start_loc, player.current_location, 
@@ -48,6 +52,8 @@ class PlayingFieldTests(unittest.TestCase):
         # 0.002 degrees is roughly ~200 meters.
         self.assertAlmostEqual(start_loc.y, player.current_location.y, delta=0.002)
         self.assertAlmostEqual(start_loc.x, player.current_location.x, delta=0.002)
+        self.assertAlmostEqual(last_known_loc.y, player.current_location.y, delta=0.002)
+        self.assertAlmostEqual(last_known_loc.x, player.current_location.x, delta=0.002)
 
     def test_update_player_location_with_one_player(self):
         field = PlayingField("Jeugdsquare 5, 3210 Linden", 1000)
@@ -74,9 +80,14 @@ class PlayingFieldTests(unittest.TestCase):
         # A. Check trajectory is initialized
         self.assertIsNotNone(trajectory)
         snapped_loc = trajectory.last_known_point
+        last_known_loc = field.get_player_last_known_location(player_id)
+        self.assertIsNotNone(snapped_loc)
+        self.assertIsNotNone(last_known_loc)
         
         # B. Check that the location was snapped (i.e., changed)
         self.assertNotEqual(snapped_loc, new_loc, 
+                            "The location should have been snapped to the nearest edge")
+        self.assertNotEqual(last_known_loc, new_loc, 
                             "The location should have been snapped to the nearest edge")
 
         # C. Verify Proximity (Sanity Check)
@@ -84,6 +95,8 @@ class PlayingFieldTests(unittest.TestCase):
         # 0.002 degrees is roughly ~200 meters.
         self.assertAlmostEqual(snapped_loc.x, new_loc.x, delta=0.002)
         self.assertAlmostEqual(snapped_loc.y, new_loc.y, delta=0.002)
+        self.assertAlmostEqual(last_known_loc.x, new_loc.x, delta=0.002)
+        self.assertAlmostEqual(last_known_loc.y, new_loc.y, delta=0.002)
         if self._is_debugging:
             plotter.close()
     
