@@ -3,9 +3,9 @@ import osmnx as ox
 import networkx as nx
 from shapely.geometry import Point, LineString
 
-from functions.graph_geometry_functions import GraphGeometryFunctions
-from models.location import Location
-from models.trajectory import Trajectory
+from ..functions.graph_geometry_functions import GraphGeometryFunctions
+from .location import Location
+from .trajectory import Trajectory
 
 class PlayingField:
     def __init__(self, address: str, radius: int):

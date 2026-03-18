@@ -1,7 +1,7 @@
 import osmnx as ox
 import matplotlib.pyplot as plt
 from shapely import Point
-from models.playing_field import PlayingField
+from ..models.playing_field import PlayingField
 
 class PlayingFieldAnimationPlotter:
     def __init__(self, field: PlayingField):

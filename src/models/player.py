@@ -1,7 +1,7 @@
 from typing import Optional
-from models.location import Location
-from models.strategy import MovementStrategy, NoopStrategy
-from models.playing_field import PlayingField
+from .location import Location
+from .strategy import MovementStrategy, NoopStrategy
+from .playing_field import PlayingField
 
 class Player:
     def __init__(self, id: str, display_name: str, current_location: Location, field: PlayingField, *, max_moving_speed: float = 1.4, strategy: MovementStrategy | None = None):
@@ -22,6 +22,7 @@ class Player:
         self.max_moving_speed: float = max_moving_speed
         # strategy that decides the next move
         self._strategy: MovementStrategy = strategy or NoopStrategy()
+        self.visited_nodes: set[int] = set()
         field.add_player(self.id, current_location)
 
     @property
@@ -54,7 +55,7 @@ class Player:
         """
 
         last_location = self.current_location
-        moved_to_new_location = self._strategy.next_move(last_location, self._field, self.max_moving_speed, self.id)
+        moved_to_new_location = self._strategy.next_move(last_location, self._field, self.max_moving_speed, self.id, self.visited_nodes)
 
         if moved_to_new_location:
             self.update_current_location(moved_to_new_location)

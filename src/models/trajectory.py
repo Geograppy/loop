@@ -1,5 +1,6 @@
 from typing import Optional
 from shapely import LineString, Point
+from ..functions.graph_geometry_functions import GraphGeometryFunctions
 
 
 class Trajectory:
@@ -33,3 +34,10 @@ class Trajectory:
     @property
     def is_empty(self) -> bool:
         return self.geometry is None or len(self.geometry.coords) == 0
+    
+    @property
+    def length(self) -> float:
+        """Returns the length of the trajectory in meters."""
+        if self.is_empty:
+            return 0.0
+        return GraphGeometryFunctions.calculate_linestring_length_in_meters(self.geometry)

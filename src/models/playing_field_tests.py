@@ -3,10 +3,10 @@ import osmnx as ox
 import sys
 import unittest
 
-from models.playing_field import PlayingField
-from models.player import Player  # Import here to avoid circular import issues
-from models.location import Location
-from utils.playing_field_animation_plotter import PlayingFieldAnimationPlotter
+from .playing_field import PlayingField
+from .player import Player  # Import here to avoid circular import issues
+from .location import Location
+from ..utils.playing_field_animation_plotter import PlayingFieldAnimationPlotter
 
 
 

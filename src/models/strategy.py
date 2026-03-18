@@ -6,81 +6,56 @@ import osmnx as ox
 import networkx as nx
 from shapely.geometry import LineString, Point
 
-from models.location import Location
-from models.playing_field import PlayingField
+from ..functions.graph_geometry_functions import GraphGeometryFunctions
+from .location import Location
+from .playing_field import PlayingField
 
 
 class MovementStrategy(Protocol):
-    def next_move(self, last_location: Location, field: PlayingField, max_moving_speed: float, player_id: str, current_time: datetime = None) -> Optional[Location]:
+    def next_move(self, last_location: Location, field: PlayingField, max_moving_speed: float, player_id: str, visited_nodes: set[int], current_time: datetime = None) -> Optional[Location]:
         pass
 
 
 class NoopStrategy(MovementStrategy):
-    def next_move(self, last_location: Location, field: PlayingField, max_moving_speed: float, player_id: str, current_time: datetime = None) -> Optional[Location]:
+    def next_move(self, last_location: Location, field: PlayingField, max_moving_speed: float, player_id: str, visited_nodes: set[int], current_time: datetime = None) -> Optional[Location]:
         return last_location
 
 
 class CloseLoopStrategy(MovementStrategy):
     """
     Attempts to close the loop back to the player's start location while
-    avoiding intersections with any existing trajectories. It respects the
+    avoiding intersections with its own trajectory. It respects the
     `max_moving_speed` by returning a point no further than allowed by the
     time delta from `last_location.timestamp`.
     """
 
     def __init__(self, min_loop_length: float = 50.0):
         self.min_loop_length = min_loop_length
-        self.visited_nodes = set()
 
-    def next_move(self, last_known_location: Location, field: PlayingField, max_moving_speed: float, player_id: str, current_time: datetime = None) -> Optional[Location]:
+    def next_move(self, last_known_location: Location, field: PlayingField, max_moving_speed: float, player_id: str, visited_nodes: set[int], current_time: datetime = None) -> Optional[Location]:
         now = current_time or datetime.now(timezone.utc)
         elapsed_seconds = (now - last_known_location.timestamp).total_seconds()
         max_distance_meter = max(0.0, max_moving_speed * elapsed_seconds)
         
-        
-        
-        last_known_point_proj = ox.projection.project_geometry(Point(last_known_location.x, last_known_location.y), to_crs=field.graph.graph['crs'])[0]
-        snapped_point_proj, u, v, key = self._snap_to_edge(field.graph, last_known_point_proj)
+        snapped_point_proj, u, v, key = GraphGeometryFunctions.snap_geo_point_to_proj_point_on_edge(Point(last_known_location.x, last_known_location.y), field.graph)
         trajectory = field.get_player_trajectory(player_id)
         new_location: Optional[Location] = None
 
-        closest_node = self._get_closest_node(field.graph, u, v, snapped_point_proj)
-        dist_to_closest_node = self._get_dist_to_closest_node_along_the_edge(field, snapped_point_proj, u, v, key, closest_node)
+        closest_node = GraphGeometryFunctions.get_closest_node(field.graph, u, v, snapped_point_proj)
+        dist_to_closest_node: float = GraphGeometryFunctions.get_dist_to_closest_node_along_the_edge(field, snapped_point_proj, u, v, key, closest_node)
         if dist_to_closest_node > max_distance_meter:
             # Move towards the closest node but only up to max_distance_meter following the edge
-            edge_data = field.graph.get_edge_data(u, v, key)
-            if 'geometry' in edge_data:
-                edge_geom: LineString = edge_data['geometry']
-            else:
-                u_node = field.graph.nodes[u]
-                v_node = field.graph.nodes[v]
-                edge_geom = LineString([(u_node['x'], u_node['y']), (v_node['x'], v_node['y'])])
-            # get distance along edge to snapped point in the direction towards closest node
-            
-            if closest_node == u:
-                target_dist = dist_to_closest_node - max_distance_meter
-                if target_dist < 0:
-                    target_dist = 0.0
-            else:
-                target_dist = (edge_geom.length - dist_to_closest_node) + max_distance_meter
-                if target_dist > edge_geom.length:
-                    target_dist = edge_geom.length
-            new_point_proj = edge_geom.interpolate(target_dist)
-            new_point_geo: Point = ox.projection.project_geometry(new_point_proj, crs=field.graph.graph['crs'], to_latlong=True)[0]
+            new_point_geo = GraphGeometryFunctions.move_along_edge(field.graph, max_distance_meter, u, v, key, closest_node, dist_to_closest_node)
             new_location = Location(x=new_point_geo.x, y=new_point_geo.y)
+    
         else:
             # Can reach the closest node; move there and calculate remaining distance until max_distance_meter is used up
             node_data = field.graph.nodes[closest_node]
-            self.visited_nodes.add(closest_node)
+            visited_nodes.add(closest_node)
             closest_node_point_geo: Point = ox.projection.project_geometry(Point(node_data['x'], node_data['y']), crs=field.graph.graph['crs'], to_latlong=True)[0]
             new_location = Location(x=closest_node_point_geo.x, y=closest_node_point_geo.y)
             remaining_distance = max_distance_meter - dist_to_closest_node
-            trajectory_length: float = 0.0
-            if trajectory and not trajectory.is_empty:
-                for i in range(len(trajectory.geometry.coords)-1) if len(trajectory.geometry.coords) > 1 else 0:
-                    p1: Point = ox.projection.project_geometry(Point(trajectory.geometry.coords.xy[0][i], trajectory.geometry.coords.xy[1][i]), to_crs=field.graph.graph['crs'])[0]
-                    p2: Point = ox.projection.project_geometry(Point(trajectory.geometry.coords.xy[0][i+1], trajectory.geometry.coords.xy[1][i+1]), to_crs=field.graph.graph['crs'])[0]
-                    trajectory_length += p1.distance(p2)
+            trajectory_length = trajectory.length if trajectory else 0.0
 
             # Continue moving along network while there is remaining distance and min_loop_length not achieved
             while remaining_distance > 0 and trajectory_length < self.min_loop_length:
@@ -105,7 +80,7 @@ class CloseLoopStrategy(MovementStrategy):
                         trajectory_geometry_proj: LineString = ox.projection.project_geometry(trajectory.geometry, to_crs=field.graph.graph['crs'])[0]
                         if trajectory_geometry_proj.intersects(edge_geom):
                             continue  # Skip this edge due to intersection
-                    if neighbor in self.visited_nodes:
+                    if neighbor in visited_nodes:
                         continue
 
                     next_node = neighbor
@@ -133,7 +108,7 @@ class CloseLoopStrategy(MovementStrategy):
                     remaining_distance -= edge_geom.length
                     trajectory_length += edge_geom.length
                     closest_node = next_node
-                    self.visited_nodes.add(closest_node)
+                    visited_nodes.add(closest_node)
                     dist_to_closest_node = 0
                 else:
                     # Move partway along the edge
@@ -159,9 +134,9 @@ class CloseLoopStrategy(MovementStrategy):
                 end_node: int
                 if trajectory and not trajectory.is_empty:
                     trajectory_geometry_proj: LineString = ox.projection.project_geometry(trajectory.geometry, to_crs=field.graph.graph['crs'])[0]
-                    end_node = v if (trajectory_geometry_proj.buffer(10).intersects(Point(field.graph.nodes[u]['x'], field.graph.nodes[u]['y']))) or u in self.visited_nodes else u
+                    end_node = v if (trajectory_geometry_proj.buffer(10).intersects(Point(field.graph.nodes[u]['x'], field.graph.nodes[u]['y']))) or u in visited_nodes else u
                 else:
-                    end_node = v if u in self.visited_nodes else u
+                    end_node = v if u in visited_nodes else u
 
                  # Find shortest path from current closest_node to start location's closest node
                  # and move along it using remaining_distance
@@ -190,6 +165,7 @@ class CloseLoopStrategy(MovementStrategy):
                 
         new_location.timestamp = now
         return new_location
+
     
     def _orient_edge_to_node(self, edge_geom: LineString, node_pt: Point, tol=1e-9) -> LineString:
         # If node is already at the first coordinate, return as-is.
@@ -210,41 +186,6 @@ class CloseLoopStrategy(MovementStrategy):
             return edge_geom
         # Otherwise the node is not exactly on endpoints — you may want to snap first.
         return edge_geom
-
-    def _get_dist_to_closest_node_along_the_edge(self, field, snapped_point_proj, u, v, key, closest_node):
-        edge_data = field.graph.get_edge_data(u, v, key)
-        if edge_data and 'geometry' in edge_data:
-            edge_geom: LineString = edge_data['geometry']
-        else:
-            u_node = field.graph.nodes[u]
-            v_node = field.graph.nodes[v]
-            edge_geom = LineString([(u_node['x'], u_node['y']), (v_node['x'], v_node['y'])])
-
-        # distance along edge from its start to the snapped point
-        dist_along_edge = edge_geom.project(snapped_point_proj)
-        # distance along the edge from snapped point to the closest node
-        if closest_node == u:
-            dist_to_closest_node = dist_along_edge
-        else:
-            dist_to_closest_node = edge_geom.length - dist_along_edge
-        return dist_to_closest_node
-    
-    def _get_closest_node(self, graph: nx.MultiDiGraph, u: int, v: int, point_proj: Point) -> int:
-        """
-        Given an edge (u, v) and a point, return the node (u or v) that is farthest from the point.
-        """
-        u_node = graph.nodes[u]
-        v_node = graph.nodes[v]
-        u_point = Point(u_node['x'], u_node['y'])
-        v_point = Point(v_node['x'], v_node['y'])
-        
-        dist_to_u = point_proj.distance(u_point)
-        dist_to_v = point_proj.distance(v_point)
-        
-        if dist_to_u > dist_to_v:
-            return v
-        else:
-            return u
     
     def _snap_to_edge(self, graph: nx.MultiDiGraph, point_proj: Point) -> tuple[Point, int, int, int]:
         """

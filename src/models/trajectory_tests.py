@@ -7,8 +7,8 @@ from unittest.mock import Mock, MagicMock, patch
 import networkx as nx
 from shapely.geometry import LineString, Point
 
-from models.location import Location
-from models.trajectory import Trajectory
+from .location import Location
+from .trajectory import Trajectory
 
 
 class TestTrajectory(unittest.TestCase):

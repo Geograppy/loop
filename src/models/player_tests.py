@@ -5,17 +5,16 @@ import osmnx as ox
 import sys
 import unittest
 
-from utils.playing_field_animation_plotter import PlayingFieldAnimationPlotter
-from utils.playing_field_plotter import PlayingFieldPlotter
-from models.strategy import CloseLoopStrategy
-from models.location import Location
-from models.playing_field import PlayingField
-from models.player import Player
+from ..utils.playing_field_animation_plotter import PlayingFieldAnimationPlotter
+from .strategy import CloseLoopStrategy
+from .location import Location
+from .playing_field import PlayingField
+from .player import Player
 
 class PlayerTests(unittest.TestCase):
     @property
     def _is_debugging(self) -> bool:
-        return False
+        return True
     
     def test_player_initialization(self):
         address = "Jeugdsquare 5, 3210 Linden"

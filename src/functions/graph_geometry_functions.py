@@ -4,7 +4,54 @@ from shapely.geometry import Point, LineString
 from shapely.ops import substring
 
 class GraphGeometryFunctions:
+    @staticmethod
+    def calculate_linestring_length_in_meters(line: LineString, crs_from: str = "epsg:4326", crs_to: str = 'epsg:3857') -> float:
+        """Projects a lat/lon LineString and calculates its length in meters."""
+        if not line or line.is_empty:
+            return 0.0
+        
+        line_proj = ox.projection.project_geometry(line, crs=crs_from, to_crs=crs_to)[0]
+        return line_proj.length
 
+
+    @staticmethod
+    def get_closest_node(graph: nx.MultiDiGraph, u: int, v: int, point_proj: Point) -> int:
+        """
+        Given an edge (u, v) and a point on it, return the node (u or v) that is closest to the point.
+        """
+        u_node = graph.nodes[u]
+        v_node = graph.nodes[v]
+        u_point = Point(u_node['x'], u_node['y'])
+        v_point = Point(v_node['x'], v_node['y'])
+        
+        dist_to_u = point_proj.distance(u_point)
+        dist_to_v = point_proj.distance(v_point)
+        
+        if dist_to_u > dist_to_v:
+            return v
+        else:
+            return u
+        
+    @staticmethod
+    def get_dist_to_closest_node_along_the_edge(field, snapped_point_proj, u, v, key, closest_node):
+        edge_data = field.graph.get_edge_data(u, v, key)
+        if edge_data and 'geometry' in edge_data:
+            edge_geom: LineString = edge_data['geometry']
+        else:
+            u_node = field.graph.nodes[u]
+            v_node = field.graph.nodes[v]
+            edge_geom = LineString([(u_node['x'], u_node['y']), (v_node['x'], v_node['y'])])
+
+        # distance along edge from its start to the snapped point
+        dist_along_edge = edge_geom.project(snapped_point_proj)
+        # distance along the edge from snapped point to the closest node
+        if closest_node == u:
+            dist_to_closest_node = dist_along_edge
+        else:
+            dist_to_closest_node = edge_geom.length - dist_along_edge
+        return dist_to_closest_node
+
+    @staticmethod
     def snap_geo_point_to_proj_point_on_edge(location: Point, graph: nx.MultiDiGraph) -> tuple[Point, int, int, int]:
         """
         Snaps a given location to the nearest edge in the graph.
@@ -16,8 +63,32 @@ class GraphGeometryFunctions:
         snapped_point_proj, u, v, key = GraphGeometryFunctions.snap_proj_point_to_proj_point_on_edge(point_proj, graph)
         
         return snapped_point_proj, u, v, key
+    
+    @staticmethod
+    def move_along_edge(graph: nx.MultiDiGraph, max_distance_meter: float, u:int, v:int, key:int, closest_node:int, dist_to_closest_node: float):
+        edge_data = graph.get_edge_data(u, v, key)
+        if 'geometry' in edge_data:
+            edge_geom: LineString = edge_data['geometry']
+        else:
+            u_node = graph.nodes[u]
+            v_node = graph.nodes[v]
+            edge_geom = LineString([(u_node['x'], u_node['y']), (v_node['x'], v_node['y'])])
+            # get distance along edge to snapped point in the direction towards closest node
+            
+        if closest_node == u:
+            target_dist = dist_to_closest_node - max_distance_meter
+            if target_dist < 0:
+                target_dist = 0.0
+        else:
+            target_dist = (edge_geom.length - dist_to_closest_node) + max_distance_meter
+            if target_dist > edge_geom.length:
+                target_dist = edge_geom.length
+        new_point_proj = edge_geom.interpolate(target_dist)
+        new_point_geo: Point = ox.projection.project_geometry(new_point_proj, crs=graph.graph['crs'], to_latlong=True)[0]
+        return new_point_geo
         
         
+    @staticmethod
     def snap_proj_point_to_proj_point_on_edge(point_proj: Point, graph: nx.MultiDiGraph) -> tuple[Point, int, int, int]:
             """
             Finds the nearest edge and returns the geometry data.
@@ -43,6 +114,7 @@ class GraphGeometryFunctions:
             
             return snapped_point_proj, u, v, key
         
+    @staticmethod
     def create_linestring_from_proj_points_within_edge(start_point: Point, end_point: Point, graph: nx.MultiDiGraph, start_node: int, end_node: int) -> LineString:
         # Same edge, just update the trajectory
         # build LineString from path and make sure to start and end from the exact last and new locations
@@ -70,6 +142,7 @@ class GraphGeometryFunctions:
         path_geo: LineString = ox.projection.project_geometry(path_proj, crs=graph.graph['crs'], to_latlong=True)[0]
         return path_geo
     
+    @staticmethod
     def create_linestring_from_proj_points_across_nodes(start_point: Point, start_point_u: int, start_point_v: int, end_point: Point, end_point_u: int, end_point_v: int, graph: nx.MultiDiGraph) -> LineString:
         start_node = GraphGeometryFunctions.get_farthest_node(start_point_u, start_point_v, end_point, graph)
         end_node = GraphGeometryFunctions.get_farthest_node(end_point_u, end_point_v, start_point, graph)
@@ -132,6 +205,7 @@ class GraphGeometryFunctions:
         # convert path_proj back to lat/lon
         return ox.projection.project_geometry(path_proj, crs=graph.graph['crs'], to_latlong=True)[0]
     
+    @staticmethod
     def get_farthest_node(u: int, v: int, point_proj: Point, graph: nx.MultiDiGraph) -> int:
         """
         Given an edge (u, v) and a point, return the node (u or v) that is farthest from the point.
@@ -149,6 +223,7 @@ class GraphGeometryFunctions:
         else:
             return v
         
+    @staticmethod
     def orient_edge_away_from_node(edge_geom: LineString, node_pt: Point, tol=1e-9) -> LineString:
         # If node is already at the first coordinate, return as-is.
         if Point(edge_geom.coords[0]).distance(node_pt) <= tol:
@@ -159,6 +234,7 @@ class GraphGeometryFunctions:
         # Otherwise the node is not exactly on endpoints — you may want to snap first.
         return edge_geom
     
+    @staticmethod
     def orient_edge_to_node(edge_geom: LineString, node_pt: Point, tol=1e-9) -> LineString:
         # If node is already at the first coordinate, return as-is.
         if Point(edge_geom.coords[0]).distance(node_pt) <= tol:
